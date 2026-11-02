@@ -67,6 +67,7 @@ class ReidEvaluator(DatasetEvaluator):
             camids.append(prediction['camids'])
 
         features = torch.cat(features, dim=0)
+        
         pids = torch.cat(pids, dim=0).numpy()
         camids = torch.cat(camids, dim=0).numpy()
         # query feature, person ids and camera ids
@@ -104,15 +105,15 @@ class ReidEvaluator(DatasetEvaluator):
             dist = rerank_dist * (1 - lambda_value) + dist * lambda_value
 
         from .rank import evaluate_rank
-        cmc, all_AP, all_INP = evaluate_rank(dist, query_pids, gallery_pids, query_camids, gallery_camids)
+        # cmc, all_AP, all_INP = evaluate_rank(dist, query_pids, gallery_pids, query_camids, gallery_camids)
 
-        mAP = np.mean(all_AP)
-        mINP = np.mean(all_INP)
-        for r in [1, 5, 10]:
-            self._results['Rank-{}'.format(r)] = cmc[r - 1] * 100
-        self._results['mAP'] = mAP * 100
-        self._results['mINP'] = mINP * 100
-        self._results["metric"] = (mAP + cmc[0]) / 2 * 100
+        # mAP = np.mean(all_AP)
+        # mINP = np.mean(all_INP)
+        # for r in [1, 5, 10]:
+        #     self._results['Rank-{}'.format(r)] = cmc[r - 1] * 100
+        # self._results['mAP'] = mAP * 100
+        # self._results['mINP'] = mINP * 100
+        # self._results["metric"] = (mAP + cmc[0]) / 2 * 100
 
         if self.cfg.TEST.ROC.ENABLED:
             from .roc import evaluate_roc

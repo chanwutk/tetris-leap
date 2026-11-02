@@ -35,6 +35,16 @@ from .shinpuhkan import Shinpuhkan
 from .wildtracker import WildTrackCrop
 from .cuhk_sysu import cuhkSYSU
 
+from .jackson import Jackson
+from .taipei import Taipei
+from .caldot1 import Caldot1
+from .caldot2 import Caldot2
+from .amsterdam import Amsterdam
+from .jnc0 import Jnc0
+from .jnc2 import Jnc2
+from .jnc6 import Jnc6
+from .jnc7 import Jnc7
+
 # Vehicle re-id datasets
 from .veri import VeRi
 from .vehicleid import VehicleID, SmallVehicleID, MediumVehicleID, LargeVehicleID
