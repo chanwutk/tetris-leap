@@ -124,8 +124,21 @@ def save_sampled_pics(frame_sampled,frame_list,video_image_path,video_image_path
             cv2.putText(img,str(record[0]),(int(record[1]),int(record[2])),cv2.FONT_HERSHEY_SIMPLEX,0.6,(0,255,0),2)
         cv2.imwrite('%s.jpg'%(str(frame)),img)
 
-def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cfg,args,logger):
-    
+def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cfg,args,logger): 
+    ### ==== resetting var per video ==== ###   
+    out_dir = getattr(args, "output_dir", "./outputs")
+    video_details.resolved_tuple = {}
+    video_details.history_cache = []  
+
+    video_details.differencor = 0
+    video_details.start_time = 0
+    video_details.detector_time = 0
+    video_details.reid_time = 0
+    video_details.frame_differencer_time = 0
+    video_details.match_time = 0
+    video_details.decode_time = 0
+    ### ==== done resetting videos per video ==== ##
+
     video_details.skip_frames = cfg["skip_frames"]
     video_details.adaptive_skip = cfg["skip_frames"]
     
@@ -147,7 +160,7 @@ def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cf
 
     if args.use_mask:
         logger.info("mask")
-        mask_image = cv2.imread("./masks/"+cfg["video_name"]+"_mask.jpg"\
+        mask_image = cv2.imread("./masks/"+cfg["full_name"]+"_mask.jpg"\
             ,cv2.IMREAD_GRAYSCALE)
         
     video_details.start_time = time.time()
@@ -158,6 +171,12 @@ def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cf
         decode_time = time.time()
         videoCapture.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
         success, current_image = videoCapture.read() 
+        if not success:
+            print(f"Error reading frame {current_frame}")
+            break
+        if current_image is None:
+            print(f"current image is None")
+            break
         original_image = current_image.copy()
         video_details.background_img = current_image
         video_details.decode_time += time.time() - decode_time
@@ -201,7 +220,7 @@ def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cf
         
         if len(results)==0:
             if args.visualize:
-                cv2.imwrite("./outputs/selected_frames/%d.jpg"%current_frame,image_selected)
+                cv2.imwrite(f"{out_dir}/selected_frames/%d.jpg"%current_frame,image_selected)
             
             video_details.history_frame = current_image
             video_details.frame_sampled.append(current_frame)
@@ -212,12 +231,11 @@ def get_final_tuple_from_detector(tracks,reid_weight,video_path,detect_object,cf
         video_details.frame_sampled.append(current_frame)
         video_details.blank_frame = False
         results = convert_float(results)
-
-
+        args.visualize = True
         if args.visualize:
-            cv2.imwrite("./outputs/selected_frames_origin/%d.jpg"%current_frame, original_image)
+            cv2.imwrite(f"{out_dir}/selected_frames_origin/%d.jpg"%current_frame, original_image)
             image_selected = paint_image(image_selected,video_details.gt_labels[current_frame],results)
-            cv2.imwrite("./outputs/selected_frames/%d.jpg"%current_frame, image_selected)
+            cv2.imwrite(f"{out_dir}/selected_frames/%d.jpg"%current_frame, image_selected)
 
         match_time = time.time()
         sample_gap = match_cars_main_updated(current_frame,current_image,\

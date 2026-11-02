@@ -30,22 +30,45 @@ class Detector():  # ByteTracker
         img = (torch.HalfTensor(np.ascontiguousarray(img.transpose((2, 0, 1))[::-1]))/255.0).cuda().unsqueeze(0)
         timer.tic()
         t1 = time.time()
-        with torch.no_grad():
-            if self.pt:
-                pred = self.model(img, augment=False, visualize=False)[0]
-            else:
-                pred = self.model(img, augment=False, visualize=False)[-1]
-        
-        pred = non_max_suppression(pred, 
-                                   cfg.MODEL.DETECT_CONF_THRE,
-                                   cfg.MODEL.DETECT_IOU_THRE,
-                                   cfg.MODEL.DETECT_CLASSES,
-                                   cfg.MODEL.DETECT_AGNOSTIC_NMS, 
-                                   max_det=cfg.MODEL.DETECT_MAX_DETECT)
-        det = pred[0]
-        
-        det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], self.img0.shape).round()
-        
+
+        if getattr(self.model, '_is_ultralytics', False):
+            # YOLOv11 path: use ultralytics predict API (NMS is done internally)
+            results = self.model.predict(
+                img,
+                conf=cfg.MODEL.DETECT_CONF_THRE,
+                iou=cfg.MODEL.DETECT_IOU_THRE,
+                classes=cfg.MODEL.DETECT_CLASSES,
+                max_det=cfg.MODEL.DETECT_MAX_DETECT,
+                verbose=False,
+            )
+            result = results[0]
+            if result.boxes is None or len(result.boxes) == 0:
+                t2 = time.time()
+                self.detactor_time.append(t2 - t1)
+                return [], False
+            # Extract detections: [x1, y1, x2, y2, conf, class]
+            boxes = result.boxes
+            det = torch.cat([boxes.xyxy, boxes.conf.unsqueeze(1), boxes.cls.unsqueeze(1)], dim=1)
+            # Scale coords from preprocessed image size to original image size
+            det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], self.img0.shape).round()
+        else:
+            # YOLOv5 path: original manual NMS
+            with torch.no_grad():
+                if self.pt:
+                    pred = self.model(img, augment=False, visualize=False)[0]
+                else:
+                    pred = self.model(img, augment=False, visualize=False)[-1]
+            
+            pred = non_max_suppression(pred, 
+                                       cfg.MODEL.DETECT_CONF_THRE,
+                                       cfg.MODEL.DETECT_IOU_THRE,
+                                       cfg.MODEL.DETECT_CLASSES,
+                                       cfg.MODEL.DETECT_AGNOSTIC_NMS, 
+                                       max_det=cfg.MODEL.DETECT_MAX_DETECT)
+            det = pred[0]
+            
+            det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], self.img0.shape).round()
+
         detect_infos = [None for _ in range(len(det))]
         det_idx = 0
         for *xyxy, conf, class_obj in reversed(det):

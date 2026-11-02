@@ -24,7 +24,6 @@ class pesudo_labeler(object):
         ,cv2.IMREAD_GRAYSCALE)
 
         from video_labeling.video_tracker import get_k_frame_label
-
         video_inference_path = os.path.join(settings.video_path,"standard_split", self.cfg["full_name"],"concat"\
             ,self.type,"%s_%s.mp4"%(self.video_name,self.type))
         pseudo_label,background_img = get_k_frame_label(video_inference_path,\
@@ -32,6 +31,7 @@ class pesudo_labeler(object):
         if self.args.save_result:
             np.save("./outputs/traj_saved/"+self.cfg["video_name"]+"_0_"+\
                 str(self.cfg["start_frame"])+".npy",pseudo_label)
+        # SAVING PSEUDO LABEL
 
         result_tuple = {} 
         frame_list = [[] for i in range(self.cfg["start_frame"])]
@@ -129,7 +129,6 @@ class cluster_traj(object):
 
 
 def initialize(cfg,args,logger):
-
     start_time = time.time()
     frame_sampled = cfg["start_frame"]
     labeler = pesudo_labeler(cfg,args,logger)

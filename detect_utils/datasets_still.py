@@ -314,7 +314,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             self.img_files[0]).parent).with_suffix('.cache')
         self.label_files = img2label_paths(self.img_files)  # labels
         if cache_path.is_file():
-            cache, exists = torch.load(cache_path), True  # load
+            cache, exists = torch.load(cache_path, weights_only=False), True  # load
             # changed
             if cache['hash'] != get_hash(self.label_files + self.img_files) or 'version' not in cache:
                 cache, exists = self.cache_labels(

@@ -1,7 +1,7 @@
 
-video_path = "XXX"
-label_path = {"blazeit":"XXX","m30":"XXX"}
-mask_path = "XXX/masks/"
+video_path = "data/videos/"
+label_path = {"blazeit":"/data/alenachao/data/leap-dataset/labels/","m30":"XXX"}
+mask_path = "masks/"
 
 map_dict = {"adventure":"Adventure_Rentals","flat":"Flat_Creek_Inn",\
                 "gather":"Gather","square":"Square_Northeast","jackson":"Jackson_Town",\

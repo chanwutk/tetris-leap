@@ -5,8 +5,7 @@ w: 720
 h: 480
 seed: 100
 start_frame: 0  
-end_frame: 32850   
-fps: 15
+end_frame: 32850 
 skip_frames: 60    
 max_gap_time: 5     
 min_gap_time: 2     

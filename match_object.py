@@ -35,7 +35,9 @@ def get_point_update(detect,tracks,cfg):
             match_flag = True            
     
     if not match_flag:
-        match_dict["[66, 66]"] = [5,60,cfg["dis_thresh"]]
+        if len(tracks) > 0:
+            fallback_id = min(5, len(tracks) - 1)
+            match_dict["[66, 66]"] = [fallback_id, 60, cfg["dis_thresh"]]
     return match_dict
 
 def sort_detections(detctions,direction="vertical",reverse=True):

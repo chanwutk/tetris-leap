@@ -3,6 +3,7 @@ from utils.general import non_max_suppression, scale_coords, xyxy2xywh
 import numpy as np
 import torch
 from utils.torch_utils import select_device
+from models.yolo import Model
 
 class TeacherModel(object):
     def __init__(self, conf_thres=0.5, iou_thres=0.3, imgsz=640, training=False):
@@ -14,20 +15,23 @@ class TeacherModel(object):
         self.training = training
 
     def init_model(self, weights, device, nc):
-        device = select_device(device)
-        t_model = torch.load(weights, map_location=torch.device('cpu'))
-        if t_model.get("model", None) is not None:
-            t_model = t_model["model"]
-        t_model.to(device)
-        t_model.float()
-        self.model = t_model
-        self.device = device
+        self.device = select_device(device)
 
-        if self.training:
-            self.model.train()
-        else:
-            self.model.eval()
-        self.stride = int(self.model.stride.max())
+        # Load checkpoint
+        ckpt = torch.load(weights, map_location='cpu', weights_only=False)
+        ckpt_model = ckpt['model'].float() if 'model' in ckpt else ckpt.float()
+
+        # Rebuild model with correct classes
+        self.model = Model(ckpt_model.yaml, ch=3, nc=nc)
+
+        # Exclude detect layer weights
+        state_dict = ckpt_model.state_dict()
+        state_dict = {k: v for k, v in state_dict.items() if 'model.24.m' not in k}  
+        self.model.load_state_dict(state_dict, strict=False)
+
+        self.model.to(self.device).float()
+        self.model.eval() if not self.training else self.model.train()
+        self.stride = int(self.model.model[-1].stride.max())
         self.nc = nc
 
     def generate_batch_targets(self, imgs, tar_size=[640, 640]):
@@ -67,12 +71,12 @@ class TeacherModel(object):
             return [], preds
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    teacher = TeacherModel(conf_thres=0.0001)
+    # teacher = TeacherModel(conf_thres=0.0001)
 
-    teacher.init_model('weights/yolov5s.pt', '0', 80)
-    import cv2
-    imgs = torch.tensor([cv2.imread('data/images/bus.jpg')]).to(teacher.device) # PIL
-    targets = teacher.generate_batch_targets(imgs)
-    print(targets)
+    # teacher.init_model('weights/yolov5l.pt', '0', 365)
+    # import cv2
+    # imgs = torch.tensor([cv2.imread('data/images/bus.jpg')]).to(teacher.device) # PIL
+    # targets = teacher.generate_batch_targets(imgs)
+    # print(targets)

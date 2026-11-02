@@ -1,6 +1,8 @@
 import sklearn
+import glob
 import os
 import shutil
+import tempfile
 import multiprocessing
 from traj_cluster.distance import distance
 import numpy as np
@@ -10,16 +12,25 @@ from evaluate import DBI_Vec
 import xml.dom.minidom
 from collections import Counter
 
-def get_blazeit_labels(video_name,d_type="train"):
+def get_blazeit_labels(video_name, d_type="train", label_dir="data/labels"):
     
     coco_names_invert = {7:"truck",2:"car",5:"bus"}
-    label_base = "XXX"
-    
-    label_file = os.path.join(label_base,video_name,d_type,\
-                "label_%s_%s.txt"%(video_name,d_type))
-    with open(label_file,"r") as f:
-        pseudo_label = f.readlines()
-    f.close()
+    label_base = label_dir
+
+    # Support both flat structure:  label_base/video_name/d_type/label_*.txt
+    # and per-clip structure:       label_base/video_name/{video_id}/d_type/label_*.txt
+    flat_pattern = os.path.join(label_base, video_name, d_type, "label_*.txt")
+    clip_pattern = os.path.join(label_base, video_name, "*", d_type, "label_*.txt")
+    label_files = sorted(glob.glob(flat_pattern)) + sorted(glob.glob(clip_pattern))
+    if not label_files:
+        raise FileNotFoundError(
+            "No label files found for '%s' (d_type=%s) under '%s'" % (video_name, d_type, label_base)
+        )
+
+    pseudo_label = []
+    for label_file in label_files:
+        with open(label_file, "r") as f:
+            pseudo_label.extend(f.readlines())
 
     label_parsed = [[] for i in range(111300)]
     label_tuple_origin = {}
@@ -120,13 +131,13 @@ def get_m30_labels(video_name,K):
 
     return  label_parsed, tuple_dict
 
-def compute_distance(tr_id,trajs_dict,distance_type="frechet"):
+def compute_distance(tr_id, trajs_dict, tmp_dir, distance_type="frechet"):
     print("Begin Compute: ",tr_id)
     try:        
         trs_matrix = distance.cdist(trajs_dict,{tr_id:trajs_dict[tr_id]},type=distance_type)  
     except Exception as e:
         print(e)
-    np.save('./outputs/traj_compute_tmp/'+str(tr_id)+".npy",trs_matrix)
+    np.save(os.path.join(tmp_dir, str(tr_id)+".npy"), trs_matrix)
     print("Done! ",tr_id)
 
 def compute_distance_single(tr_id,trajs_dict,distance_type="frechet"):
@@ -137,14 +148,13 @@ def compute_distance_single(tr_id,trajs_dict,distance_type="frechet"):
     return trs_matrix
     
 
-def compute_distance_all(traj_dict,num_thread=48):
+def compute_distance_all(traj_dict, tmp_dir, num_thread=48):
 
-    shutil.rmtree('./outputs/traj_compute_tmp')
-    os.mkdir('./outputs/traj_compute_tmp')
-    
+    os.makedirs(tmp_dir, exist_ok=True)
+
     pool = multiprocessing.Pool(processes=num_thread)
     for tr_id in traj_dict.keys():
-        pool.apply_async(compute_distance, (tr_id,traj_dict))
+        pool.apply_async(compute_distance, (tr_id, traj_dict, tmp_dir))
     pool.close()
     pool.join()
     
@@ -156,13 +166,13 @@ def compute_distance_all_single(traj_dict):
             distances[id] = trs_matrix[id]
     return distances
 
-def load_computed_distance():
+def load_computed_distance(tmp_dir):
 
-    files = os.listdir("./outputs/traj_compute_tmp/")
+    files = os.listdir(tmp_dir)
     
     distances = {}
     for file in files:
-        distance_dict = np.load(os.path.join("./outputs/traj_compute_tmp",file),allow_pickle=True)
+        distance_dict = np.load(os.path.join(tmp_dir, file), allow_pickle=True)
         distance_dict = distance_dict.item()
         for id in distance_dict:
             distances[id] = distance_dict[id]
@@ -196,11 +206,15 @@ def get_traj_cluster(tracks,k_min=8,k_max=32):
 
     tracks_origin = tracks.copy()
     traj_dict = convert2dict(tracks)
-    compute_distance_all(traj_dict)
-    distances = load_computed_distance()
+    tmp_dir = tempfile.mkdtemp(prefix="traj_compute_tmp_")
+    try:
+        compute_distance_all(traj_dict, tmp_dir)
+        distances = load_computed_distance(tmp_dir)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     distance_matrix = convert2matrix(distances)
     score_min = 1000
-    center_result = 0
+    center_result = []
     for k_num in range(k_min,k_max,2):
         labels, centers = Kmediods(k_num, distance_matrix)
 

@@ -6,7 +6,7 @@ import pickle
 import random
 import argparse
 import numpy as np
-from video_labeling.config import cfg
+from video_labeling.configs import cfg
 from video_labeling.timer import Timer
 from loguru import logger
 import matplotlib.pyplot as plt
@@ -14,6 +14,47 @@ from video_labeling.models import load_yolo_detection
 from video_labeling.tracker.byte_tracker import BYTETracker, BaseTrack
 from video_labeling.video_process import get_label_infos, test_result_track, test_singal_result, analysis_time
 from video_labeling.utils import letterbox_first, letterbox_second, non_max_suppression, scale_coords
+
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from retinanet_adapter import RetinaNetDetector
+except Exception as _retina_import_err:
+    print(f"[WARNING] Could not import RetinaNetDetector: {_retina_import_err}")
+    RetinaNetDetector = None
+
+class RetinaNetWrapper:
+    def __init__(self, device, model_dir=None, detectron_config_dir=None, config_yaml=None):
+        if RetinaNetDetector is None:
+            raise RuntimeError(
+                "RetinaNetDetector could not be imported. "
+                "Check the warning above for the actual error (likely detectron2 is not installed or misconfigured)."
+            )
+        # Convert torch.device to string if necessary
+        device_str = str(device) if isinstance(device, torch.device) else device
+        det = RetinaNetDetector(device_str, model_dir=model_dir, detectron_config_dir=detectron_config_dir)
+        if config_yaml:
+            det.config_yaml = config_yaml
+        self.model = det
+        self.detactor_time = []
+        self.img0 = None
+
+    def preprocess(self, cfg, size):
+        pass
+
+    def __call__(self, img, timer):
+        self.img0 = img
+        timer.tic()
+        t1 = time.time()
+        _, bboxes = self.model.detect(img)
+        t2 = time.time()
+        self.detactor_time.append(t2 - t1)
+
+        if len(bboxes) == 0:
+            return [], False
+        
+        detect_infos = torch.tensor(bboxes)
+        return detect_infos, True
 
 def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=None):
    def get_color(idx):
@@ -118,9 +159,22 @@ def make_parser():
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
     parser.add_argument('--detect_conf_thre', type=float, default=0.1, help='detect confidence threshold')
     parser.add_argument("--video_path", type=str, default="XXX.mp4", help="video path")
+    parser.add_argument("--use_retinanet", action="store_true", help="Use RetinaNet detector")
+    parser.add_argument("--retinanet_path", type=str, default=None,
+                        help="Path to RetinaNet model directory containing config_refined.json and retinanet_b3d.pth")
+    parser.add_argument("--detectron_config_dir", type=str, default=None,
+                        help="Path to detectron2/configs directory (fallback if model_zoo lookup fails)")
+    parser.add_argument("--detectron_config_yaml", type=str, default=None,
+                        help="Explicit path to a detectron2 base config .yaml (overrides config_refined.json 'config' field)")
+    parser.add_argument("--yolo_weight", type=str, default=None,
+                        help="Path to YOLO weight file. Overrides cfg.MODEL.YOLO_WEIGHT from defaults.py.")
     parser.add_argument("--mask_path", type=str, default="./masks/XXX.jpg", help="video path")
     parser.add_argument("--save_path", type=str, default="./videos_result/new_tmp", help="save video path")
     parser.add_argument("--video_name", type=str, default="square_val", help="video name")
+
+    parser.add_argument("--video_dir", type=str, default=None,
+                    help="Directory containing multiple videos to process")
+
     return parser
 
 def set_seed(seed):
@@ -135,7 +189,8 @@ def set_seed(seed):
 class Detector():
    def __init__(self, cfg):
 
-        self.model, self.stride, self.pt = load_yolo_detection(cfg)
+        self.model, self.stride, self.pt = load_yolo_detection(cfg.MODEL.YOLO_WEIGHT,
+                                                                input_size=cfg.INPUT.SIZE)
         self.model.eval()
         self.detactor_time = []
 
@@ -151,12 +206,36 @@ class Detector():
         img = (torch.HalfTensor(np.ascontiguousarray(img.transpose((2, 0, 1))[::-1]))/255.0).cuda().unsqueeze(0)
         timer.tic()
         t1 = time.time()
-        with torch.no_grad():
-            pred = self.model(img, augment=False, visualize=False)
-        pred = non_max_suppression(pred, cfg.MODEL.DETECT_CONF_THRE, cfg.MODEL.DETECT_IOU_THRE, cfg.MODEL.DETECT_CLASSES, cfg.MODEL.DETECT_AGNOSTIC_NMS, max_det=cfg.MODEL.DETECT_MAX_DETECT)
-        det = pred[0]
-        # [x1,y1,x2,y2,conf,class]
-        det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+
+        if getattr(self.model, '_is_ultralytics', False):
+            # YOLOv11 path: use ultralytics predict API (NMS is done internally)
+            results = self.model.predict(
+                img,
+                conf=cfg.MODEL.DETECT_CONF_THRE,
+                iou=cfg.MODEL.DETECT_IOU_THRE,
+                classes=cfg.MODEL.DETECT_CLASSES,
+                max_det=cfg.MODEL.DETECT_MAX_DETECT,
+                verbose=False,
+            )
+            result = results[0]
+            if result.boxes is None or len(result.boxes) == 0:
+                t2 = time.time()
+                self.detactor_time.append(t2 - t1)
+                return [], False
+            # Extract detections: [x1, y1, x2, y2, conf, class]
+            boxes = result.boxes
+            det = torch.cat([boxes.xyxy, boxes.conf.unsqueeze(1), boxes.cls.unsqueeze(1)], dim=1)
+            # Scale coords from preprocessed image size to original image size
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+        else:
+            # YOLOv5 path: original manual NMS
+            with torch.no_grad():
+                pred = self.model(img, augment=False, visualize=False)
+            pred = non_max_suppression(pred, cfg.MODEL.DETECT_CONF_THRE, cfg.MODEL.DETECT_IOU_THRE, cfg.MODEL.DETECT_CLASSES, cfg.MODEL.DETECT_AGNOSTIC_NMS, max_det=cfg.MODEL.DETECT_MAX_DETECT)
+            det = pred[0]
+            # [x1,y1,x2,y2,conf,class]
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+
         detect_infos = [None for _ in range(len(det))]
         det_idx = 0
         for *xyxy, conf, class_label in reversed(det):
@@ -176,16 +255,28 @@ def labeling_video(args):
     save_path: pseudo label save path
     video_name: name to save the input video
     """
+    if args.yolo_weight is not None:
+        cfg.defrost()
+        cfg.MODEL.YOLO_WEIGHT = args.yolo_weight
     cfg.freeze()
     set_seed(cfg.SOLVER.SEED)
     # os.environ["CUDA_VISIBLE_DEVICES"] = cfg.MODEL.DEVICE_ID
-    args.device = torch.device("cuda" if args.device == "gpu" else "cpu")
+    if isinstance(args.device, str):
+        args.device = torch.device("cuda" if args.device == "gpu" else "cpu")
     
     time_all = []
     
-    detector = Detector(cfg)
+    if args.use_retinanet:
+        detector = RetinaNetWrapper(
+            args.device,
+            model_dir=getattr(args, 'retinanet_path', None),
+            detectron_config_dir=getattr(args, 'detectron_config_dir', None),
+            config_yaml=getattr(args, 'detectron_config_yaml', None),
+        )
+    else:
+        detector = Detector(cfg)
     timer = Timer()
-    
+
     videoCapture = cv2.VideoCapture(args.video_path)
     success, image0 = videoCapture.read()
     
@@ -285,7 +376,15 @@ def get_k_frame_label(video_path,mask_image,k=1000):
     
     time_all = []
     
-    detector = Detector(cfg)
+    if args.use_retinanet:
+        detector = RetinaNetWrapper(
+            args.device,
+            model_dir=getattr(args, 'retinanet_path', None),
+            detectron_config_dir=getattr(args, 'detectron_config_dir', None),
+            config_yaml=getattr(args, 'detectron_config_yaml', None),
+        )
+    else:
+        detector = Detector(cfg)
     timer = Timer()
 
     videoCapture = cv2.VideoCapture(video_path)
@@ -366,4 +465,33 @@ def get_k_frame_label(video_path,mask_image,k=1000):
 
 if __name__ == "__main__":
     args = make_parser().parse_args()
+     # --- MULTI-VIDEO MODE ---
+    if args.video_dir is not None:
+        video_files = sorted([f for f in os.listdir(args.video_dir)
+                              if f.endswith(".mp4")])
+
+        original_save_path = args.save_path  # ← store the base once
+
+        for f in video_files:
+            video_id = os.path.splitext(f)[0]
+
+            # RESET save_path every iteration
+            args.save_path = original_save_path
+
+            # compute new path
+            base_path = os.path.dirname(args.save_path)
+            split = os.path.basename(args.save_path)
+            args.save_path = os.path.join(base_path, video_id, split)
+
+            os.makedirs(args.save_path, exist_ok=True)
+
+            args.video_name = video_id
+            args.video_path = os.path.join(args.video_dir, f)
+
+            logger.info(f"Processing {f}")
+            labeling_video(args)
+
+        exit()
+
+    # --- SINGLE VIDEO MODE ---
     labeling_video(args)

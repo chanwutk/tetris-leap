@@ -18,7 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import test
+import test_customized
 from models.experimental import attempt_load
 from models.yolo import Model
 from utils.datasets import create_dataloader
@@ -33,7 +33,6 @@ from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_di
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 from teacher import TeacherModel
 logger = logging.getLogger(__name__)
-
 
 def train(hyp, opt, device, tb_writer=None):
 
@@ -67,7 +66,7 @@ def train(hyp, opt, device, tb_writer=None):
     loggers = {'wandb': None}  # loggers dict
     if rank in [-1, 0]:
         opt.hyp = hyp  # add hyperparameters
-        run_id = torch.load(weights).get('wandb_id') if weights.endswith(
+        run_id = torch.load(weights, weights_only=False).get('wandb_id') if weights.endswith(
             '.pt') and os.path.isfile(weights) else None
         wandb_logger = WandbLogger(opt, save_dir.stem, run_id, data_dict)
         loggers['wandb'] = wandb_logger.wandb
@@ -95,10 +94,12 @@ def train(hyp, opt, device, tb_writer=None):
         with torch_distributed_zero_first(rank):
             attempt_download(weights)  # download if not found locally
 
-        ckpt = torch.load(weights, map_location=device)  # load checkpoint
+        ckpt = torch.load(weights, map_location=device, weights_only=False)  # load checkpoint
 
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get(
             'anchors')).to(device)  # create
+        # model = rebuild_detect_head(model, nc, names)
+        
         exclude = ['anchor'] if (opt.cfg or hyp.get(
             'anchors')) and not opt.resume else []  # exclude keys
         state_dict = ckpt['model'].float().state_dict()  # to FP32
@@ -107,9 +108,11 @@ def train(hyp, opt, device, tb_writer=None):
         model.load_state_dict(state_dict, strict=False)  # load
         logger.info('Transferred %g/%g items from %s' %
                     (len(state_dict), len(model.state_dict()), weights))  # report
+        print("DEBUG (student model): ", model.model[-1].nc)
     else:
         model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get(
             'anchors')).to(device)  # create
+        print("DEBUG (student model): ", model.model[-1].nc)
     with torch_distributed_zero_first(rank):
         check_dataset(data_dict)  # check
     train_path = data_dict['train']
@@ -370,7 +373,7 @@ def train(hyp, opt, device, tb_writer=None):
             final_epoch = epoch + 1 == epochs
             if not opt.notest or final_epoch:  # Calculate mAP
                 wandb_logger.current_epoch = epoch + 1
-                results, _, _ = test.test(data_dict,
+                results, _, _ = test_customized.test(data_dict,
                                           batch_size=batch_size * 2,
                                           imgsz=imgsz_test,
                                           model=ema.ema,
@@ -441,7 +444,7 @@ def train(hyp, opt, device, tb_writer=None):
                     (epoch - start_epoch + 1, (time.time() - t0) / 3600))
         if opt.data.endswith('coco.yaml') and nc == 80:  # if COCO
             for m in (last, best) if best.exists() else (last):  # speed, mAP tests
-                results, _, _ = test.test(opt.data,
+                results, _, _ = test_customized.test(opt.data,
                                           batch_size=batch_size * 2,
                                           imgsz=imgsz_test,
                                           conf_thres=0.0001,

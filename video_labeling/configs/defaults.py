@@ -13,13 +13,13 @@ _C.MODEL.DEVICE = "cuda"
 _C.MODEL.DEVICE_ID = '4'
 # If using half float
 _C.MODEL.HALF = False
-# Name of backbone detaction module
+# Name of backbone detection module ('yolov5' or 'yolov11')
 _C.MODEL.DETACT_NAME = 'yolov5'
 # Name of backbone embedding module
 _C.MODEL.EMBEDDING_NAME = 'reid'
 # Name of Model Baseline or ours
 _C.MODEL.NAME = "baseline"
-# Yolo-v5 release 
+# YOLO weight path (supports yolov5 .pt or yolov11 .pt)
 _C.MODEL.YOLO_WEIGHT = "./yolov5x.pt"
 # ReID weight 
 _C.MODEL.EMB_WEIGHT = "XXX"

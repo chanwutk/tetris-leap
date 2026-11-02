@@ -84,7 +84,8 @@ class get_label_details(object):
         elif self.dataset_group.lower() == "detrac":
 
             label_file = open(os.path.join(self.label_base,self.video_id,self.d_type,\
-                "label_%s_%s.txt"%(self.video_id,self.d_type)), "r")
+                # "label_%s_%s.txt"%(self.video_id,self.d_type)), "r")
+                "label_%s.txt"%(self.video_id)), "r")
 
             contents = label_file.readlines()
             self.frame_num = int(contents[-1].split(" ")[1])
@@ -109,8 +110,9 @@ class get_label_details(object):
 
         elif self.dataset_group == "blazeit":
             
-            label_file = os.path.join(self.label_base,self.video_id,self.d_type,\
-                "label_%s_%s.txt"%(self.video_id,self.d_type))
+            label_file = os.path.join(self.label_base,self.cfg["full_name"],self.video_id,self.d_type,\
+                # "label_%s_%s.txt"%(self.video_id,self.d_type))
+                "label_%s.txt"%(self.video_id))
 
             with open(label_file,"r") as f:
                 pseudo_label = f.readlines()

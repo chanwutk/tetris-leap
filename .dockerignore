@@ -1,0 +1,30 @@
+# Large data directories
+distill_model/
+data/
+datasets/
+pretrained/
+weights/
+runs/
+logs/
+outputs/
+features/
+
+# System/Environment files
+.git/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+install_log.txt
+install_log*.txt
+*.jpg
+*.mp4
+*.png
+
+# Virtual environments
+envs/
+venv/
+.env/
+
+# Repo copies (since we are cloning them or installing dependencies separately)
+detectron2_repo/

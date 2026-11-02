@@ -7,6 +7,7 @@ from settings.settings import video_details
 from prettytable import PrettyTable
 import json
 from collections import Counter
+import os
 
 def dict2list(input_dict):
     
@@ -357,16 +358,18 @@ def evaluate_parsed_result(return_tuple,cfg,args,logger):
         
     json_result = json.dumps(return_tuple)
 
-    with open("./outputs/results/parsed/"+cfg["video_name"]+".json","w") as json_file:
+    out_dir = getattr(args, "output_dir", "./outputs")
+    os.makedirs(f'{out_dir}/results/parsed', exist_ok=True)
+    with open(f"{out_dir}/results/parsed/"+cfg["video_name"]+".json","w") as json_file:
         json_file.write(json_result)
     json_file.close()
 
-    with open("./outputs/results/parsed/"+cfg["video_name"]+"_object.json","w") as json_type_file:
+    with open(f"{out_dir}/results/parsed/"+cfg["video_name"]+"_object.json","w") as json_type_file:
         object_result = json.dumps(video_details.object_type)
         json_type_file.write(object_result)
     json_type_file.close()
     
-    with open("./outputs/results/parsed/"+cfg["video_name"]+"_match_dict.json","w") as json_dict_file:
+    with open(f"{out_dir}/results/parsed/"+cfg["video_name"]+"_match_dict.json","w") as json_dict_file:
         object_result = json.dumps(video_details.match_dict)
         json_dict_file.write(object_result)
     json_dict_file.close()
@@ -432,7 +435,7 @@ def evaluated_object_recall(frame_sampled,gt_tuple):
             if frame_id >= gt_tuple[key][0] and frame_id <= gt_tuple[key][1]:
                 item_recall.append(key)
                 
-    return len(set(item_recall))/len(item_dict)
+    return len(set(item_recall))/len(item_dict) if len(item_dict) > 0 else 0
     
 
 if __name__ == "__main__":

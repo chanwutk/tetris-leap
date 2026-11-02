@@ -8,7 +8,8 @@ from detect_utils.torch_utils import select_device
 import time
 import warnings
 from video_labeling.models import load_yolo_detection
-from tools.utils import letterbox_first, letterbox_second, non_max_suppression, scale_coords
+from video_labeling.utils import letterbox_first, letterbox_second
+# from tools.utils import non_max_suppression, scale_coords
 from configs import cfg
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -83,7 +84,8 @@ class Detector_origin():  # ByteTracker
     
    def __init__(self, cfg):
 
-        self.model, self.stride, self.pt = load_yolo_detection(cfg)
+        self.model, self.stride, self.pt = load_yolo_detection(cfg.MODEL.YOLO_WEIGHT,
+                                                                input_size=cfg.INPUT.SIZE)
         self.model.eval()
         self.detactor_time = []
 
@@ -98,11 +100,31 @@ class Detector_origin():  # ByteTracker
         img = letterbox_second(self.img0, *self.pad_args)
         img = (torch.HalfTensor(np.ascontiguousarray(img.transpose((2, 0, 1))[::-1]))/255.0).cuda().unsqueeze(0)
         t1 = time.time()
-        with torch.no_grad():
-            pred = self.model(img, augment=False, visualize=False)
-        pred = non_max_suppression(pred, cfg.MODEL.DETECT_CONF_THRE, cfg.MODEL.DETECT_IOU_THRE, cfg.MODEL.DETECT_CLASSES, cfg.MODEL.DETECT_AGNOSTIC_NMS, max_det=cfg.MODEL.DETECT_MAX_DETECT)
-        det = pred[0]
-        det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+
+        if getattr(self.model, '_is_ultralytics', False):
+            # YOLOv11 path: use ultralytics predict API (NMS is done internally)
+            results = self.model.predict(
+                img,
+                conf=cfg.MODEL.DETECT_CONF_THRE,
+                iou=cfg.MODEL.DETECT_IOU_THRE,
+                classes=cfg.MODEL.DETECT_CLASSES,
+                max_det=cfg.MODEL.DETECT_MAX_DETECT,
+                verbose=False,
+            )
+            result = results[0]
+            if result.boxes is None or len(result.boxes) == 0:
+                return [], False
+            boxes = result.boxes
+            det = torch.cat([boxes.xyxy, boxes.conf.unsqueeze(1), boxes.cls.unsqueeze(1)], dim=1)
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+        else:
+            # YOLOv5 path: original manual NMS
+            with torch.no_grad():
+                pred = self.model(img, augment=False, visualize=False)
+            pred = non_max_suppression(pred, cfg.MODEL.DETECT_CONF_THRE, cfg.MODEL.DETECT_IOU_THRE, cfg.MODEL.DETECT_CLASSES, cfg.MODEL.DETECT_AGNOSTIC_NMS, max_det=cfg.MODEL.DETECT_MAX_DETECT)
+            det = pred[0]
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.img0.shape).round()
+
         detect_infos = [None for _ in range(len(det))]
         det_idx = 0
         for *xyxy, conf, class_obj in reversed(det):

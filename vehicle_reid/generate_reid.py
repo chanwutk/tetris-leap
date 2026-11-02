@@ -4,10 +4,10 @@ import os
 import random
 
 object_type = {2:'car',5:'bus',7:'truck'}
-video_base = "PATH_TO_VIDEO"
-label_base = "PATH_TO_LABEL"
-save_base = "./datasets/XXX"
-mask_base = ".././masks"
+video_base = "/data/alenachao/leap/LEAP/data/videos"
+label_base = "/data/alenachao/leap/LEAP/data/labels"
+save_base = "/data/alenachao/leap/LEAP/datasets"
+mask_base = "./masks"
 
 def get_labels(video_name,d_type):
     label_path = os.path.join(label_base,video_name,d_type,"label_%s_%s.txt"%(video_name,d_type))
@@ -37,6 +37,7 @@ def generate_train_dataset(video_name, skip_frame, parsed_result, parsed_tuple,c
 
     image_mask = cv2.imread(os.path.join(mask_base,video_name+"_mask.jpg"),cv2.IMREAD_GRAYSCALE)
     save_path = os.path.join(save_base,video_name,"image_train")
+    os.makedirs(save_path, exist_ok=True)
     video_path = os.path.join(video_base,video_name,"concat","train",video_name+"_train.mp4")
     video_object = cv2.VideoCapture(video_path)
     print("Parsed")
@@ -60,12 +61,15 @@ def generate_train_dataset(video_name, skip_frame, parsed_result, parsed_tuple,c
             frame_count += 1
         else:
             break
+    # print(frame_count)
 
 def generate_test_query_dataset(video_name, skip_frame, parsed_result, parsed_tuple,cam_id="9"):
 
     image_mask = cv2.imread(os.path.join(mask_base,video_name+"_mask.jpg"),cv2.IMREAD_GRAYSCALE)
     save_path_test = os.path.join(save_base,video_name,"image_test")
+    os.makedirs(save_path_test, exist_ok=True)
     save_path_query = os.path.join(save_base,video_name,"image_query")
+    os.makedirs(save_path_query, exist_ok=True)
     video_path = os.path.join(video_base,video_name,"concat","test",video_name+"_test.mp4")
     video_object = cv2.VideoCapture(video_path)
     print("Parsed")
@@ -103,10 +107,11 @@ def generate_test_query_dataset(video_name, skip_frame, parsed_result, parsed_tu
                         cv2.imwrite(os.path.join(save_path_query,"%s_%d_%s_%d_%d_%d_%d_%d.jpg"%(cam_id,key,object_class,\
                             x_min,y_min,x_max,y_max,frame_count)),pic)
             break
+    
+    # print(frame_count)
 
 if __name__ == "__main__":
-
-    parsed_result,parsed_tuple = get_labels("taipei",d_type="train")
-    generate_train_dataset("taipei",5,parsed_result,parsed_tuple,cam_id="1")
-    parsed_result,parsed_tuple = get_labels("taipei",d_type="test")
-    generate_test_query_dataset("taipei",5,parsed_result,parsed_tuple,cam_id="1")
+    parsed_result,parsed_tuple = get_labels("caldot1",d_type="train") 
+    generate_train_dataset("caldot1",1,parsed_result,parsed_tuple,cam_id="1")
+    parsed_result,parsed_tuple = get_labels("caldot1",d_type="test")
+    generate_test_query_dataset("caldot1",1,parsed_result,parsed_tuple,cam_id="1")

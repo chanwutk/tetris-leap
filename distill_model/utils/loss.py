@@ -268,7 +268,7 @@ class ComputeOutbasedDstillLoss:
                 c_obj_scale = t_obj_scale.unsqueeze(-1).repeat(1,
                                                                1, 1, 1, self.nc)
                 t_lsoft += torch.mean(self.DclsLoss(pi[..., 5:],
-                                                        t_pi[..., 5:]) * c_obj_scale)
+                                                        t_pi[..., 5: 5 + self.nc]) * c_obj_scale)
 
             t_lobj += torch.mean(self.DobjLoss(pi[..., 4],
                                  t_pi[..., 4]) * t_obj_scale)

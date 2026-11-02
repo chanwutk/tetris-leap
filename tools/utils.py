@@ -312,6 +312,8 @@ def get_sample_gap(current_frame,tracks,match_traj_dict):
     best_interval = []
     for key, value in match_traj_dict.items():
         track_id, nearest_point, distance = value
+        if track_id >= len(tracks) or len(tracks[track_id]) == 0:
+            continue
         estimated_starttime = current_frame - nearest_point
         estimated_endtime = current_frame + (len(tracks[track_id]) \
             - nearest_point)
