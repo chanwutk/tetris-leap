@@ -65,7 +65,9 @@ RUN $LEAP_PIP install --upgrade pip setuptools wheel
 # ------------------------------------------------------------
 # Build Detectron2 from source
 # ------------------------------------------------------------
-RUN git clone https://github.com/facebookresearch/detectron2.git /leap/detectron2_repo
+# Pinned to the commit the Tetris runs' leap env had (env/leap.pip.txt).
+RUN git clone https://github.com/facebookresearch/detectron2.git /leap/detectron2_repo \
+    && git -C /leap/detectron2_repo checkout 8a9d885b3d4dcf1bef015f0593b872ed8d32b4ab
 WORKDIR /leap/detectron2_repo
 
 # Install Detectron2 in-place, using leap env and no build isolation
@@ -77,6 +79,10 @@ RUN $LEAP_PYTHON -m pip install --no-cache-dir --no-build-isolation -e .
 WORKDIR /leap
 COPY ./requirements.txt /leap/requirements.txt
 RUN $LEAP_PIP install --no-cache-dir --prefer-binary -r /leap/requirements.txt
+
+# Installed by hand into the container of the Tetris runs (env/leap.conda.yml).
+RUN conda install -y -n leap -c pytorch faiss-gpu=1.7.4 && conda clean --all --yes
+RUN $LEAP_PIP install --no-cache-dir yacs==0.1.8 fvcore==0.1.5.post20221221
 
 # ------------------------------------------------------------
 # Copy LEAP code
