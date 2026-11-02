@@ -1,0 +1,15 @@
+
+# Weights, data, run outputs, and local clones (see TETRIS.md)
+__pycache__/
+*.pyc
+weights/*.pt
+pretrained/
+video_labeling/yolov5x.pt
+detectron2_repo/
+leap.egg-info/
+logs/
+outputs/
+runs/
+debug_run/
+datasets/
+data/labels/
